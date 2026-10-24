@@ -28,7 +28,15 @@ export async function records(): Promise<RecordLife[]> {
 }
 export async function archive(game: Game) {
   const all = await records();
-  const id = `${game.seed}-${game.history.map((h) => h.eventId + ":" + h.action).join("|")}`;
+  const id = JSON.stringify([
+    game.version,
+    game.seed,
+    game.name,
+    game.lessons,
+    game.history.flatMap((h, step) =>
+      h.intervention === undefined ? [] : [{ step, lesson: h.intervention }],
+    ),
+  ]);
   if (!all.some((r) => r.id === id))
     await set(
       "last-lesson-records-v1",
