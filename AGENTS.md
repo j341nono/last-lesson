@@ -12,3 +12,6 @@
 - Save in IndexedDB. Keep network failure separate from game progression. Do not publish private teachings without explicit per-life consent.
 - Run `npm test`, `npm run build`, and relevant Playwright flows after substantive changes. Add coverage for causal dependencies, determinism, lifespan and intervention limits when changing the engine.
 - Root contains only configuration, README, AGENTS and source directories. Put specifications in `docs/`. Use small, meaningful `prefix: concise English sentence` commits; do not create empty or fabricated commits.
+- Do not require page or panel scrolling. Fit each view within the viewport; use explicit pages/tabs for teachings, records, timelines and details. Verify actual content bounds rather than merely hiding overflow.
+- Present the journey as short animated pixel scenes with concise, complete, paged captions. Keep the full authored text accessible. Visual timers, replay and caption controls must never advance the simulation or consume interventions.
+- Preserve the player's manual-caption preference across scenes. Pause automatic captions while a dialog is open; honor reduced motion.
