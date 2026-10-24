@@ -94,7 +94,7 @@ const arcs: { id: string; region: string; scene: string; rows: Row[] }[] = [
           ),
           a(
             "友人の仕事を守る",
-            "工房の門を守った。後日、遠くの谷が赤く染まった。アオからの手紙は途絶えた。",
+            "工房の門を守った。後日、遠くの谷が赤く染まった。アオからの手紙は途絶えた。後に、八人が亡くなったと知った。",
             "promise",
             { trust: 3, harm: 18 },
             "砲台を守った",
@@ -158,7 +158,7 @@ const arcs: { id: string; region: string; scene: string; rows: Row[] }[] = [
         [
           a(
             "約束の旅へ出る",
-            "海は鉛色だった。それでもミナは「青いね」と言った。帰った村では、三つの灯りが消えていた。",
+            "海は鉛色だった。それでもミナは「青いね」と言った。帰った村では、三つの灯りが消えていた。子どもが三人、亡くなったと聞いた。",
             "promise",
             { trust: 8, harm: 3, energy: -7 },
             "ミナは海を見た",
@@ -441,7 +441,7 @@ const arcs: { id: string; region: string; scene: string; rows: Row[] }[] = [
           ),
           a(
             "軍の入口を教える",
-            "その夜、司令部が崩れた。戦争は短くなり、墓地は広くなった。",
+            "その夜、司令部が崩れた。戦争は短くなり、墓地には十二の墓が増えた。",
             "power",
             { harm: 20, civilization: 8 },
             "反乱の道を開いた",
@@ -546,7 +546,7 @@ const arcs: { id: string; region: string; scene: string; rows: Row[] }[] = [
         [
           a(
             "戦術を渡す",
-            "戦闘は三日で終わった。勝者の報告書には、焼けた村は描かれなかった。",
+            "戦闘は三日で終わった。勝者の報告書には、焼けた村と十六人の死は描かれなかった。",
             "power",
             { harm: 24, civilization: 9 },
             "戦術を渡した",
@@ -828,7 +828,7 @@ const arcs: { id: string; region: string; scene: string; rows: Row[] }[] = [
           ),
           a(
             "規則に従う",
-            "倉庫の無駄はなくなった。街から、昔の話をする人がいなくなった。",
+            "倉庫の無駄はなくなった。街から、昔の話をする人がいなくなった。配給を失った六人は、春を迎えなかった。",
             "power",
             { civilization: 18, harm: 12 },
             "効率の街",
@@ -1083,7 +1083,7 @@ const arcs: { id: string; region: string; scene: string; rows: Row[] }[] = [
           ),
           a(
             "壁を守る",
-            "中の食料は足りた。門の外の焚き火は、冬の終わりには消えていた。",
+            "中の食料は足りた。門の外の焚き火は、冬の終わりには消えていた。雪解けに、四人の遺体が見つかった。",
             "survive",
             { energy: 8, harm: 6, trust: 2 },
             "閉じた門",
@@ -1135,11 +1135,29 @@ const arcs: { id: string; region: string; scene: string; rows: Row[] }[] = [
     ],
   },
 ];
+// Cross-arc gates tie discoveries and reputation to later opportunities.
+const gates: Record<string, Event["gate"]> = {
+  "ai-0": {
+    anyMemory: ["医療知識", "戦術知識", "研究者を起こした", "眠る研究者の座標"],
+  },
+  "future-2": { minTrust: 20, minCivilization: 30 },
+  "war-3": {
+    anyMemory: [
+      "砲台を守った",
+      "家族をかくまった",
+      "検問で真実を話した",
+      "戦術を渡した",
+      "軍需工房",
+    ],
+  },
+  "robots-3": { minCivilization: 20 },
+};
 // Each arc has four distinct nodes. Explicit edges describe causal continuations.
 export const events: Event[] = arcs.flatMap((arc) =>
   arc.rows.map((r, i) => ({
     id: `${arc.id}-${i}`,
     arc: arc.id,
+    gate: gates[`${arc.id}-${i}`],
     stage: i,
     title: r[0],
     text: r[1],
