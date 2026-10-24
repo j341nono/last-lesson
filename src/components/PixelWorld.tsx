@@ -1,14 +1,34 @@
 import { useEffect, useRef } from "react";
+export type Motion =
+  | "approach"
+  | "rescue"
+  | "talk"
+  | "promise"
+  | "scan"
+  | "leave"
+  | "build"
+  | "release"
+  | "conflict"
+  | "rest"
+  | "repair";
 export function PixelWorld({
   scene = "wasteland",
   age = 0,
   damage = 0,
   hero = false,
+  arc,
+  motion = "approach",
+  beat = 0,
+  name = "ルカ",
 }: {
   scene?: string;
   age?: number;
   damage?: number;
   hero?: boolean;
+  arc?: string;
+  motion?: Motion;
+  beat?: number;
+  name?: string;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -16,6 +36,7 @@ export function PixelWorld({
       ctx = c.getContext("2d")!;
     const w = 480,
       h = 260;
+    const started = performance.now();
     let frame = 0,
       raf = 0;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -31,7 +52,8 @@ export function PixelWorld({
     };
     function draw() {
       frame++;
-      const t = reduced ? 0 : frame / 60;
+      const t = reduced ? 4 : (performance.now() - started) / 1000;
+      const progress = reduced || beat > 0 ? 1 : Math.min(1, t / 2.8);
       const snow = scene === "snow",
         green = scene === "forest",
         lab = ["lab", "data"].includes(scene),
@@ -157,9 +179,135 @@ export function PixelWorld({
           rect(x + 2, 226 - (i % 4) * 3, 4, 2, "#697354");
         }
       }
+      if (scene === "coast") {
+        rect(0, 145, 480, 88, "#628d89");
+        for (let k = 0; k < 12; k++)
+          rect((k * 57 + t * 8) % 480, 151 + ((k * 19) % 75), 28, 2, "#b1c6b1");
+        rect(0, 222, 480, 38, "#9c9d78");
+      }
       // Luka: a hand-drawn pixel silhouette with articulated joints and an amber heart.
-      const rx = hero ? 234 : 232,
-        ry = 130 + Math.floor(Math.sin(t * 1.6) * 1);
+      const animated = !!arc;
+      const moving =
+        motion === "leave"
+          ? progress
+          : motion === "approach"
+            ? 1 - progress
+            : 0;
+      const rx = animated
+          ? motion === "leave"
+            ? 205 - progress * 110
+            : 190 - moving * 80
+          : hero
+            ? 234
+            : 232,
+        ry =
+          130 +
+          (motion === "rest"
+            ? 12
+            : Math.floor(Math.sin(t * (moving ? 9 : 1.6)) * (moving ? 3 : 1)));
+      // A second actor and authored action effects turn the scene into a short vignette.
+      if (animated && arc !== "empty" && motion !== "rest") {
+        const child = arc === "girl",
+          machine = arc === "robots" || arc === "ai";
+        const fallen =
+          (arc === "traveler" || arc === "snow") &&
+          (motion === "approach" || (motion === "rescue" && progress < 0.5));
+        const ax = 330,
+          ay = child ? 185 : 169;
+        if (fallen) {
+          rect(ax - 15, 218, 45, 13, "#4b5551");
+          rect(ax + 22, 211, 13, 14, "#c8ab86");
+        } else {
+          rect(ax - 6, ay + 32, 6, 28, "#354540");
+          rect(ax + 6, ay + 32, 6, 28, "#354540");
+          rect(
+            ax - 11,
+            ay + 5,
+            26,
+            32,
+            machine
+              ? "#8c9f90"
+              : arc === "war"
+                ? "#68644c"
+                : arc === "repair"
+                  ? "#658481"
+                  : "#b28b61",
+          );
+          rect(ax - 8, ay - 13, 20, 20, machine ? "#a7b6a0" : "#ccb18a");
+          rect(ax - 9, ay - 16, 22, 7, "#48554a");
+          rect(ax + 4, ay - 7, 3, 3, "#364b46");
+          if (machine) {
+            rect(ax - 5, ay - 8, 15, 7, "#304b44");
+            rect(ax - 2, ay - 6, 3, 3, "#d3ba7d");
+          }
+          rect(
+            ax - 19,
+            ay + 8,
+            8,
+            23,
+            motion === "rescue" ? "#c0a47c" : "#758875",
+          );
+        }
+        if (motion === "rescue" || motion === "promise") {
+          const ex = rx + 35 + (ax - rx - 40) * progress;
+          rect(ex, 180, 7, 7, motion === "promise" ? "#91c9c0" : "#edce85");
+          for (let k = 0; k < 5; k++)
+            rect(
+              ex - 12 + k * 6,
+              194 + Math.sin(t * 3 + k) * 4,
+              2,
+              2,
+              "#e1c58c",
+            );
+        }
+        if (motion === "repair") {
+          rect(rx + 20, 176, 105 * progress, 2, "#bac9a1");
+          for (let k = 0; k < 5; k++)
+            rect(
+              rx + 30 + Math.sin(t * 7 + k) * 12,
+              168 + Math.cos(t * 5 + k) * 12,
+              3,
+              3,
+              k % 2 ? "#e5c481" : "#a8ceb5",
+            );
+          rect(rx + 49, 184, 4, 17, "#c4c8af");
+          rect(rx + 45, 181, 12, 5, "#c4c8af");
+        }
+        if (motion === "talk") {
+          for (let k = 0; k < 3; k++)
+            rect(260 + k * 10, 130 - Math.sin(t * 2 + k) * 3, 4, 4, "#e2cc96");
+        }
+        if (motion === "scan") {
+          ctx.fillStyle = "#c9e5ac24";
+          ctx.fillRect(rx + 30, 120, 155 * progress, 105);
+          rect(rx + 30 + 155 * progress, 120, 2, 105, "#c5db9f");
+          rect(355, 190, 24, 18, "#c5bd8f");
+        }
+        if (motion === "build") {
+          for (let k = 0; k < 5; k++)
+            rect(275 + k * 14, 222 - Math.floor(k / 2) * 9, 12, 8, "#c1b68a");
+          for (let k = 0; k < 4; k++) rect(20 + k * 120, 142, 6, 8, "#e9c579");
+        }
+        if (motion === "release") {
+          for (let k = 0; k < 4; k++) {
+            const bx = 270 + progress * 100 + k * 16,
+              by = 145 - progress * 65 + (k % 2) * 7;
+            rect(bx, by, 8, 2, "#d0d5ad");
+            rect(bx + 4, by - 3 - Math.sin(t * 8 + k) * 2, 2, 5, "#d0d5ad");
+          }
+        }
+        if (motion === "conflict") {
+          rect(rx + 37, 175, 140 * progress, 3, "#d69763");
+          for (let k = 0; k < 8; k++)
+            rect(
+              340 + Math.sin(k * 23 + t) * 22,
+              169 + Math.cos(k * 11 + t) * 22,
+              3,
+              3,
+              "#dfab72",
+            );
+        }
+      }
       rect(rx - 24, 225, 63, 4, "#394b423f");
       rect(rx - 11, ry + 69, 10, 27, "#344b47");
       rect(rx + 13, ry + 69, 10, 27, "#344b47");
@@ -182,8 +330,8 @@ export function PixelWorld({
       rect(rx - 19, ry - 15, 47, 35, "#aeb7a5");
       rect(rx - 14, ry - 12, 38, 4, "#d1d1b9");
       rect(rx - 14, ry - 4, 37, 18, "#263f3d");
-      rect(rx - 8, ry + 1, 7, 5, "#e3ce91");
-      rect(rx + 10, ry + 1, 7, 5, "#e3ce91");
+      rect(rx - 8, ry + 1, 7, 5, motion === "rest" ? "#63776a" : "#e3ce91");
+      rect(rx + 10, ry + 1, 7, 5, motion === "rest" ? "#63776a" : "#e3ce91");
       rect(rx - 25, ry - 5, 5, 18, "#718a7b");
       rect(rx + 29, ry - 5, 5, 18, "#718a7b");
       rect(rx + 3, ry - 28, 3, 13, "#3c5750");
@@ -208,7 +356,7 @@ export function PixelWorld({
     }
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [scene, age, damage, hero]);
+  }, [scene, age, damage, hero, arc, motion, beat]);
   return (
     <canvas
       ref={ref}
@@ -216,7 +364,7 @@ export function PixelWorld({
       height={260}
       className="pixel-world"
       role="img"
-      aria-label={`${scene}の風景に立つ旧式ロボット、ルカ`}
+      aria-label={`${scene}の風景。${name}${arc ? `と出会った人の${motion}の場面` : ""}`}
     />
   );
 }
