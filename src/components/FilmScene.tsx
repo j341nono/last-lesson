@@ -52,7 +52,7 @@ export function FilmScene({
       Math.max(3200, beats[cut].length * 115),
     );
     return () => clearTimeout(id);
-  }, [auto, paused, cut, text, beats.length]);
+  }, [auto, paused, cut, text, beats.length, replay]);
   return (
     <div
       className={`film-scene motion-${motion}`}
