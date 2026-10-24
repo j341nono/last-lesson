@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS lives (id TEXT PRIMARY KEY, created TEXT NOT NULL, record TEXT NOT NULL, hidden INTEGER NOT NULL DEFAULT 0 CHECK(hidden IN (0,1)));
+CREATE INDEX IF NOT EXISTS lives_visible ON lives(hidden,created DESC);
+CREATE TABLE IF NOT EXISTS limits (id TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS limits_expiry ON limits(expires);
