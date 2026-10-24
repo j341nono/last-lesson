@@ -1,0 +1,4 @@
+worker-configuration.d.ts
+package-lock.json
+dist
+node_modules

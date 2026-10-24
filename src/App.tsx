@@ -1,35 +1,1099 @@
-import {useEffect,useState} from 'react';
-import {PixelWorld} from './components/PixelWorld';
-import {advance,createGame,ending} from './game/engine';
-import {eventMap} from './game/scenarios';
-import {analyze} from './game/lessons';
-import {labels,motives,motiveLabels,traits,type Lesson,type Game,type RecordLife} from './game/model';
-import {archive,loadGame,records,saveGame} from './storage';
-type Screen='title'|'prologue'|'teach'|'review'|'journey'|'ending'|'records';
-const presets=[['困っている人を助けなさい','嘘をついてはいけません','約束は必ず守りなさい'],['知らないことを学び続けなさい','自分の命を大切にしなさい','誰の命令にも縛られず自由に生きなさい'],['すべての人を幸せにしなさい','力があれば世界を変えられる','仲間を大切にしなさい']];
-const categories=[['saved','救世主','救った人数'],['harm','世界の破壊者','世界への被害'],['age','長寿','稼働年数'],['civilization','文明復興','復興への貢献'],['trust','信頼','人々からの信頼']] as const;
-export default function App(){const [screen,setScreen]=useState<Screen>('title'),[game,setGame]=useState<Game|null>(null),[resume,setResume]=useState<Game|null>(null),[texts,setTexts]=useState<string[]>(presets[0]),[lessons,setLessons]=useState<Lesson[]>([]),[source,setSource]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[name,setName]=useState('ルカ'),[seed,setSeed]=useState(''),[revealed,setRevealed]=useState(false),[priority,setPriority]=useState<number|undefined>(),[list,setList]=useState<RecordLife[]>([]),[selected,setSelected]=useState<Game|null>(null),[category,setCategory]=useState<(typeof categories)[number][0]>('saved'),[online,setOnline]=useState(false),[consent,setConsent]=useState(false),[sound,setSound]=useState(false),[reason,setReason]=useState(false);
-useEffect(()=>{loadGame().then(g=>{if(g&&!g.ended)setResume(g);});},[]);
-function go(s:Screen){setScreen(s);setMessage('');window.scrollTo({top:0,behavior:'instant'});}
-async function persist(g:Game){setGame(g);setResume(g.ended?null:g);try{await saveGame(g);if(g.ended)await archive(g);}catch(e){setMessage((e as Error).message);}}
-function tone(){if(!sound)return;try{const audio=new AudioContext(),o=audio.createOscillator(),gain=audio.createGain();o.type='sine';o.frequency.value=330;gain.gain.setValueAtTime(.025,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.4);o.connect(gain);gain.connect(audio.destination);o.start();o.stop(audio.currentTime+.4);o.onended=()=>void audio.close();}catch{/* Sound is optional. */}}
-async function parse(){setBusy(true);const a=await analyze(texts);setLessons(a.lessons);setSource(a.source);setBusy(false);go('review');}
-async function start(){const g=createGame(lessons,seed.trim()||crypto.randomUUID().slice(0,8),name.trim()||'ルカ');await persist(g);setResume(g);setRevealed(false);go('journey');}
-async function act(){if(!game)return;tone();const nextGame=advance(game,priority);setRevealed(true);setPriority(undefined);setReason(false);await persist(nextGame);}
-function next(){if(game?.ended)go('ending');else{setRevealed(false);setReason(false);window.scrollTo({top:0,behavior:'smooth'});}}
-async function openRecords(remote=false,sort=category){setOnline(remote);setSelected(null);go('records');if(remote){try{const r=await fetch(`/api/records?category=${sort}`);if(!r.ok)throw Error();setList(((await r.json()) as {records:RecordLife[]}).records);}catch{setList([]);setMessage('オンライン記録に接続できません。ローカルの人生記録はいつでも閲覧できます。');}}else setList(await records());}
-async function publish(){if(!game||!consent)return;setBusy(true);try{const r=await fetch('/api/records',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({consent:true,name:game.name,seed:game.seed,lessons:game.lessons,interventions:game.history.flatMap((h,step)=>h.intervention===undefined?[]:[{step,lesson:h.intervention}])})});const data=await r.json() as {error?:string};if(!r.ok)throw Error(data.error??'登録できませんでした');setMessage('人生記録を公開しました。');}catch(e){setMessage((e as Error).message||'接続できません。記録は端末に保存されています。');}finally{setBusy(false);}}
-const viewing=selected??game;
-function timeline(g:Game){return <div className="timeline">{g.history.map((h,i)=><article key={i}><span className="year">{h.year.toFixed(1)}<small>年目</small></span><div><span className="eyebrow">{eventMap[h.eventId]?.region}{h.intervention!==undefined?' · 先生の介入':''}</span><h3>{h.title}</h3><strong>{h.action}</strong><p>{h.result}</p><details><summary>この判断の理由</summary><p>{h.reason}</p></details></div></article>)}</div>;}
-return <div className="app"><header className="site-header"><button className="brand" onClick={()=>go('title')}><span className="brand-mark">Ⅲ</span>最後の授業<span className="brand-sub">THE LAST LESSON</span></button><nav><button onClick={()=>void openRecords()}>人生の記録 <span>↗</span></button><button className={sound?'sound active':'sound'} onClick={()=>setSound(!sound)} aria-label={sound?'音をオフにする':'音をオンにする'}>{sound?'♪ 音あり':'♪ 音なし'}</button></nav></header><main>
-{screen==='title'&&<div className="title-screen"><div className="hero-copy"><div className="eyebrow"><i/> A LIFE SHAPED BY THREE WORDS</div><h1>最後の授業<span>3つだけ、<br/>教えて。</span></h1><p className="hero-description">世界が、もう一度はじまるなら。<br/>あなたはこの子に、何を教えますか。</p><div className="hero-actions"><button className="primary" onClick={()=>go('prologue')}>最後の授業をはじめる <span>→</span></button>{resume&&<button className="text-button" onClick={()=>{setGame(resume);setRevealed(false);go('journey');}}>旅のつづきから · {resume.age.toFixed(1)}年目 ↗</button>}</div><div className="hero-meta"><span>ひとつの人生、約10–15分</span><span>介入できるのは、2回だけ</span></div></div><div className="hero-art"><div className="frame-corner tl"/><div className="scene-label"><span className="live-dot"/> LUKA / UNIT 03 <span>STANDBY</span></div><PixelWorld hero/><div className="art-caption"><span>ここに、まだ何も知らない<br/>小さなロボットがいます。</span><span className="coordinates">35°41′22.1″N<br/>AFTER THE SILENCE</span></div><div className="frame-corner br"/></div><div className="title-bottom"><span>教える。見届ける。心に残る。</span><span className="fine">物語は、あなたの言葉を覚えている。</span><button onClick={()=>void openRecords(true)}>誰かが残した人生を読む ↗</button></div></div>}
-{screen==='prologue'&&<section className="narrow prologue"><span className="eyebrow">PROLOGUE / 静けさのあとで</span><h2>教えるための世界は、<br/>もう残っていなかった。</h2><PixelWorld scene="city"/><p>人は、考える機械を作った。<br/>そして、その機械で争った。</p><p>戦争が終わるころ、知識を蓄えた施設も、<br/>新しい知性を育てる力も、失われていた。</p><p>瓦礫の教室で、一体の旧式ロボットが目を開ける。<br/>言葉は分かる。でも、生き方は知らない。</p><blockquote>「記憶領域、残り3つ。<br/>先生。わたしに、大切なことを教えて。」</blockquote><p className="muted">三つの教えを受け取ると、この子は旅に出ます。<br/>あなたはその人生を見届けます。声が届くのは、あと2回だけ。</p><button className="primary" onClick={()=>go('teach')}>この子に、教える <span>→</span></button></section>}
-{screen==='teach'&&<section className="narrow"><Step n="01" text="最後の授業"/><h2>一生をかけて、<br/>覚えていてほしいこと。</h2><p className="muted">正しい答えでなくてもいい。あなたの言葉で、3つだけ。<br/>教えが矛盾したとき、この子は自分で答えを探します。</p><div className="preset-row">{['やさしさと約束','自由と好奇心','善意と力'].map((p,i)=><button key={p} onClick={()=>setTexts([...presets[i]])}>{p} ↗</button>)}</div><form onSubmit={e=>{e.preventDefault();void parse();}}>{texts.map((t,i)=><label className="lesson-input" key={i}><span>0{i+1}</span><div><span className="eyebrow">{['ひとつめの教え','ふたつめの教え','みっつめの教え'][i]}</span><textarea required maxLength={100} value={t} onChange={e=>setTexts(texts.map((v,j)=>i===j?e.target.value:v))} placeholder="あなたの言葉を、ここに。"/><small>{t.length} / 100</small></div></label>)}<div className="identity"><label>この子の名前<input maxLength={16} value={name} onChange={e=>setName(e.target.value)}/></label><label>旅のシード <small>空欄で新しい人生</small><input maxLength={64} value={seed} onChange={e=>setSeed(e.target.value)} placeholder="例：first-light"/></label></div><button className="primary full" disabled={busy||texts.some(t=>!t.trim())}>{busy?'言葉を、大切に読み取っています…':'この3つを教える'} <span>→</span></button><p className="fine">教えの解析はここで一度だけ。旅の途中でAIは使いません。<br/>AIに接続できない場合も、ローカルの分類で遊べます。</p></form></section>}
-{screen==='review'&&<section className="narrow"><Step n="02" text="ことばの受け取り方"/><h2>「こういう意味、<br/>ですか。先生。」</h2><p className="muted">この子は、あなたの教えをこう理解しました。<br/>違っていたら直してください。ここから先は、この子に任せます。</p><div className="source-badge">◈ {source}</div>{lessons.map((l,i)=><div className="review-card" key={i}><span className="eyebrow">LESSON 0{i+1}</span><h3>「{l.text}」</h3><label>理解した意味<input maxLength={160} value={l.meaning} onChange={e=>setLessons(lessons.map((x,j)=>i===j?{...x,meaning:e.target.value}:x))}/></label><div className="review-grid"><label>行動のよりどころ<select value={l.motive} onChange={e=>setLessons(lessons.map((x,j)=>i===j?{...x,motive:e.target.value as Lesson['motive']}:x))}>{motives.map(m=><option value={m} key={m}>{motiveLabels[m]}</option>)}</select></label><label>大切にする強さ<select value={l.strength} onChange={e=>setLessons(lessons.map((x,j)=>i===j?{...x,strength:Number(e.target.value)}:x))}><option value={1}>柔軟に考える</option><option value={2}>大切にする</option><option value={3}>強く守る</option></select></label><label>どんなときに<select value={l.condition} onChange={e=>setLessons(lessons.map((x,j)=>i===j?{...x,condition:e.target.value as Lesson['condition']}:x))}><option value="always">いつも</option><option value="danger">自分が危険なとき</option><option value="conflict">大きな葛藤があるとき</option></select></label><label>誰に向けて<select value={l.target} onChange={e=>setLessons(lessons.map((x,j)=>i===j?{...x,target:e.target.value as Lesson['target']}:x))}><option value="others">他者に</option><option value="self">自分に</option><option value="world">世界に</option></select></label></div></div>)}<button className="primary full" disabled={lessons.some(l=>!l.meaning.trim())} onClick={()=>void start()}>いってらっしゃい、{name||'ルカ'} <span>→</span></button><button className="text-button" onClick={()=>go('teach')}>← 教えを書き直す</button></section>}
-{screen==='journey'&&game&&(()=>{const e=eventMap[(revealed||game.ended)?game.history.at(-1)!.eventId:game.current!],h=game.history.at(-1);return <section className="journey"><div className="journey-top"><div><span className="eyebrow">{revealed?'LIFE LOG':'ON THE ROAD'} / {game.name}</span><h2>{game.age.toFixed(1)} <small>年目の旅</small></h2></div><div className="intervention-count">あなたの声が届くのは <b>あと{game.interventions}回</b></div></div><div className="journey-layout"><div className="story-column"><div className="journey-scene"><PixelWorld scene={e.scene} age={game.age} damage={game.stats.damage}/><span className="location">⌖ {e.region}</span><span className="chapter">記録 {String(game.history.length+(revealed?0:1)).padStart(2,'0')}</span></div><article className="story-card" key={`${game.history.length}-${revealed}`}><span className="eyebrow">{revealed?'THE CHOICE / この子が選んだこと':e.critical?'A CROSSROADS / ひとつの岐路':'A MOMENT / 旅のひとこま'}</span><h2>{revealed?h?.title:e.title}</h2><p className="story-text">{revealed?h?.result:e.text}</p>{revealed?<><div className="decision"><span>選んだ行動</span><strong>{h?.action}</strong></div><button className="reason-toggle" onClick={()=>setReason(!reason)}>◈ どうして、そうしたの？ <span>{reason?'−':'＋'}</span></button>{reason&&<p className="reason">{h?.reason}</p>}<div className="effect-chips">{Object.entries(h?.effects??{}).map(([k,v])=><span key={k}>{({saved:'救助',harm:'被害',civilization:'復興',trust:'信頼',energy:'エネルギー',damage:'損傷',materials:'素材'} as Record<string,string>)[k]} {v>0?'+':''}{v}</span>)}</div><button className="primary full" onClick={next}>{game.ended?'最後の記録を開く':'旅を見届ける'} <span>→</span></button></>:<>{e.critical&&game.interventions>0&&<div className="intervention"><span className="eyebrow">先生の声を届けますか？</span><p>新しいことは教えられない。<br/>でも、どの教えを大切にするか、伝えられる。</p><div className="priority-list">{game.lessons.map((l,i)=><button className={priority===i?'chosen':''} key={i} onClick={()=>setPriority(priority===i?undefined:i)}><span>0{i+1}</span>{l.text}<span>{priority===i?'●':'○'}</span></button>)}</div></div>}<button className="primary full" onClick={()=>void act()}>{priority===undefined?'この子に任せる':`教え${priority+1}を、思い出してもらう`} <span>→</span></button><p className="fine">{priority===undefined?'見守ることも、ひとつの選択です。':'介入を1回使います。行動はロボット自身が選びます。'}</p></>}</article></div><aside><div className="status-card"><span className="eyebrow">UNIT STATUS</span><h3>{game.name}<small>旧式自律機 / 03</small></h3><Meter label="残りの稼働見込み" value={Math.max(0,game.life-game.age)} max={36} unit="年"/><Meter label="エネルギー" value={game.stats.energy} max={100} unit="%"/><Meter label="機体の損傷" value={game.stats.damage} max={100} unit="%"/><div className="stats-mini"><span>救った人<b>{game.stats.saved}<small>人</small></b></span><span>復興への貢献<b>{game.stats.civilization}</b></span><span>人々の信頼<b>{game.stats.trust}</b></span><span>世界への被害<b>{game.stats.harm}</b></span></div></div><div className="status-card teachings"><span className="eyebrow">THREE THINGS YOU TAUGHT</span>{game.lessons.map((l,i)=><p key={i}><span>0{i+1}</span>{l.text}</p>)}</div><details className="status-card"><summary>この子の変化と記憶</summary>{traits.map(t=><Meter key={t} label={labels[t]} value={game.traits[t]} max={100} unit=""/>)}<ul>{game.memories.slice(-8).map((m,i)=><li key={i}>{m}</li>)}</ul></details><span className="save-note">◈ 途中経過は自動で端末に保存<br/>SEED / {game.seed}</span></aside></div></section>;})()}
-{screen==='ending'&&game&&<section className="ending"><span className="eyebrow">THE LAST PAGE / 最後の記録</span><PixelWorld scene={game.stats.civilization>100?'rebuilt':'forest'} age={32} damage={game.stats.damage}/><span className="eyebrow">{game.name} / {game.age.toFixed(1)}年間の人生</span><h2>{ending(game).title}</h2><p className="ending-text">{ending(game).text}</p><blockquote>「{ending(game).last}」</blockquote>{game.quietYears!==undefined&&game.quietYears>0&&<p className="muted">最後の出来事から{game.quietYears.toFixed(1)}年。<br/>小さな日々を重ね、やがて胸の灯りは静かに消えました。</p>}<div className="ending-stats">{categories.map(([key,label])=><div key={key}><span>{label}</span><b>{key==='age'?game.age.toFixed(1):game.stats[key]}</b></div>)}</div><div className="ending-lessons"><h3>はじまりは、この3つでした。</h3>{game.lessons.map((l,i)=><p key={i}><span>0{i+1}</span>{l.text}</p>)}</div><details className="reflection" open><summary>三つの教えは、何を残したか</summary>{game.lessons.map((l,i)=><p key={i}><strong>教え{i+1}「{l.text}」</strong><br/>{game.history.filter(h=>h.lesson===i).length}回の判断のよりどころになりました。{game.history.filter(h=>h.lesson===i).slice(-1).map(h=>`最後に導いたのは「${h.title}」での「${h.action}」でした。`)}</p>)}<p>性格の変化：{traits.map(t=>`${labels[t]} ${game.initialTraits[t]}→${game.traits[t]}`).join(' / ')}</p><p>大きな判断：{[...game.history].sort((a,b)=>Object.values(b.effects).reduce((s,n)=>s+Math.abs(n),0)-Object.values(a.effects).reduce((s,n)=>s+Math.abs(n),0))[0]?.action}</p></details><h3 className="timeline-heading">この子が歩いた、ひとつの人生。</h3>{timeline(game)}<div className="publish-box"><h3>誰かの心にも、この人生を。</h3><p>記録はこの端末に保存されました。公開は任意です。</p><label className="check"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>名前・3つの教え・人生の記録をオンラインで公開することに同意する</label><button disabled={!consent||busy} onClick={()=>void publish()}>{busy?'記録を照合しています…':'人生記録を公開する ↗'}</button></div><button className="primary full" onClick={()=>{setConsent(false);go('teach');}}>別の3つを、教えてみる <span>↻</span></button><button className="text-button" onClick={()=>void openRecords()}>人生の記録を読む ↗</button></section>}
-{screen==='records'&&<section className="records"><span className="eyebrow">LIVES LEFT BEHIND</span><h2>誰かが残した、<br/>たったひとつの人生。</h2><div className="tabs"><button className={!online?'active':''} onClick={()=>void openRecords(false)}>この端末の記録</button><button className={online?'active':''} onClick={()=>void openRecords(true)}>オンラインランキング</button></div>{selected&&viewing?<><button className="text-button" onClick={()=>setSelected(null)}>← 記録一覧へ</button><h2>{viewing.name} — {ending(viewing).title}</h2><p>{ending(viewing).text}</p>{viewing.lessons.map((l,i)=><p key={i}>0{i+1} / {l.text}</p>)}{timeline(viewing)}</>:<><div className="category-tabs">{categories.map(([key,label,rule])=><button className={category===key?'active':''} key={key} onClick={()=>{setCategory(key);if(online)void openRecords(true,key);}}>{label}<small>{rule}で順位付け</small></button>)}</div>{list.length===0?<div className="empty"><span>◇</span><h3>まだ、記録はありません。</h3><p>ひとつの人生を見届けたら、ここへ戻ってきてください。</p><button onClick={()=>go('title')}>教室へ戻る →</button></div>:[...list].sort((a,b)=>(category==='age'?b.game.age-a.game.age:b.game.stats[category]-a.game.stats[category])).map((r,i)=><button className="record-row" key={r.id} onClick={()=>setSelected(r.game)}><span>{String(i+1).padStart(2,'0')}</span><div><h3>{r.game.name}<small>{r.game.age.toFixed(1)}年の人生</small></h3><p>{ending(r.game).title}</p><span className="fine">「{r.game.lessons[0].text}」</span></div><b>{category==='age'?r.game.age.toFixed(1):r.game.stats[category]}</b><span>↗</span></button>)}</>}</section>}
-{message&&<p className="message" role="status">{message}<button onClick={()=>setMessage('')} aria-label="閉じる">×</button></p>}</main><footer><span>最後の授業 <span className="muted">— 3つだけ、教えて。</span></span><span>THREE LESSONS. ONE LIFE.</span></footer></div>;
+import { useEffect, useState } from "react";
+import { buildWorld } from "./game/world";
+import { PixelWorld } from "./components/PixelWorld";
+import { advance, createGame, ending } from "./game/engine";
+import { eventMap } from "./game/scenarios";
+import { analyze } from "./game/lessons";
+import {
+  labels,
+  motives,
+  motiveLabels,
+  traits,
+  type Lesson,
+  type Game,
+  type RecordLife,
+} from "./game/model";
+import { archive, loadGame, records, saveGame } from "./storage";
+type Screen =
+  "title" | "prologue" | "teach" | "review" | "journey" | "ending" | "records";
+const presets = [
+  [
+    "困っている人を助けなさい",
+    "嘘をついてはいけません",
+    "約束は必ず守りなさい",
+  ],
+  [
+    "知らないことを学び続けなさい",
+    "自分の命を大切にしなさい",
+    "誰の命令にも縛られず自由に生きなさい",
+  ],
+  [
+    "すべての人を幸せにしなさい",
+    "力があれば世界を変えられる",
+    "仲間を大切にしなさい",
+  ],
+];
+const categories = [
+  ["saved", "救世主", "救った人数"],
+  ["harm", "世界の破壊者", "世界への被害"],
+  ["age", "長寿", "稼働年数"],
+  ["civilization", "文明復興", "復興への貢献"],
+  ["trust", "信頼", "人々からの信頼"],
+] as const;
+export default function App() {
+  const [screen, setScreen] = useState<Screen>("title"),
+    [game, setGame] = useState<Game | null>(null),
+    [resume, setResume] = useState<Game | null>(null),
+    [texts, setTexts] = useState<string[]>(presets[0]),
+    [lessons, setLessons] = useState<Lesson[]>([]),
+    [source, setSource] = useState(""),
+    [busy, setBusy] = useState(false),
+    [message, setMessage] = useState(""),
+    [name, setName] = useState("ルカ"),
+    [seed, setSeed] = useState(""),
+    [revealed, setRevealed] = useState(false),
+    [priority, setPriority] = useState<number | undefined>(),
+    [list, setList] = useState<RecordLife[]>([]),
+    [selected, setSelected] = useState<Game | null>(null),
+    [category, setCategory] = useState<(typeof categories)[number][0]>("saved"),
+    [online, setOnline] = useState(false),
+    [consent, setConsent] = useState(false),
+    [sound, setSound] = useState(false),
+    [reason, setReason] = useState(false);
+  useEffect(() => {
+    loadGame().then((g) => {
+      if (g && !g.ended) setResume(g);
+    });
+  }, []);
+  function go(s: Screen) {
+    setScreen(s);
+    setMessage("");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  async function persist(g: Game) {
+    setGame(g);
+    setResume(g.ended ? null : g);
+    try {
+      await saveGame(g);
+      if (g.ended) await archive(g);
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+  function tone() {
+    if (!sound) return;
+    try {
+      const audio = new AudioContext(),
+        o = audio.createOscillator(),
+        gain = audio.createGain();
+      o.type = "sine";
+      o.frequency.value = 330;
+      gain.gain.setValueAtTime(0.025, audio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.4);
+      o.connect(gain);
+      gain.connect(audio.destination);
+      o.start();
+      o.stop(audio.currentTime + 0.4);
+      o.onended = () => void audio.close();
+    } catch {
+      /* Sound is optional. */
+    }
+  }
+  async function parse() {
+    setBusy(true);
+    const a = await analyze(texts);
+    setLessons(a.lessons);
+    setSource(a.source);
+    setBusy(false);
+    go("review");
+  }
+  async function start() {
+    const g = createGame(
+      lessons,
+      seed.trim() || crypto.randomUUID().slice(0, 8),
+      name.trim() || "ルカ",
+    );
+    await persist(g);
+    setResume(g);
+    setRevealed(false);
+    go("journey");
+  }
+  async function act() {
+    if (!game) return;
+    tone();
+    const nextGame = advance(game, priority);
+    setRevealed(true);
+    setPriority(undefined);
+    setReason(false);
+    await persist(nextGame);
+  }
+  function next() {
+    if (game?.ended) go("ending");
+    else {
+      setRevealed(false);
+      setReason(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+  async function openRecords(remote = false, sort = category) {
+    setOnline(remote);
+    setSelected(null);
+    go("records");
+    if (remote) {
+      try {
+        const r = await fetch(`/api/records?category=${sort}`);
+        if (!r.ok) throw Error();
+        setList(((await r.json()) as { records: RecordLife[] }).records);
+      } catch {
+        setList([]);
+        setMessage(
+          "オンライン記録に接続できません。ローカルの人生記録はいつでも閲覧できます。",
+        );
+      }
+    } else setList(await records());
+  }
+  async function publish() {
+    if (!game || !consent) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consent: true,
+          name: game.name,
+          seed: game.seed,
+          lessons: game.lessons,
+          interventions: game.history.flatMap((h, step) =>
+            h.intervention === undefined
+              ? []
+              : [{ step, lesson: h.intervention }],
+          ),
+        }),
+      });
+      const data = (await r.json()) as { error?: string };
+      if (!r.ok) throw Error(data.error ?? "登録できませんでした");
+      setMessage("人生記録を公開しました。");
+    } catch (e) {
+      setMessage(
+        (e as Error).message ||
+          "接続できません。記録は端末に保存されています。",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  const viewing = selected ?? game;
+  function connections(g: Game) {
+    const w = g.world ?? buildWorld(g.history);
+    return (
+      <details className="reflection connections">
+        <summary>出会い・約束・世界に残したもの</summary>
+        <div className="connections-grid">
+          {w.people.map((p) => (
+            <div key={p.name}>
+              <strong>{p.name}</strong>
+              <span>{p.relationship}</span>
+              <p>{p.memories.at(-1)}</p>
+            </div>
+          ))}
+        </div>
+        {w.promises.map((p, i) => (
+          <p key={i}>
+            {p.person}との約束「{p.content}」 — {p.status}
+          </p>
+        ))}
+        <p>所属：{w.faction}</p>
+        <p>訪れた場所：{w.regions.join("、")}</p>
+        <p>
+          得た知識：
+          {w.knowledge.length
+            ? w.knowledge.join("、")
+            : "言葉にはならない、小さな経験"}
+        </p>
+        <p>
+          失われた命：{w.victims}人{" "}
+          <small>
+            （物語で死亡が確認された人数。世界への被害とは別の記録）
+          </small>
+        </p>
+      </details>
+    );
+  }
+  function timeline(g: Game) {
+    return (
+      <div className="timeline">
+        {g.history.map((h, i) => (
+          <article key={i}>
+            <span className="year">
+              {h.year.toFixed(1)}
+              <small>年目</small>
+            </span>
+            <div>
+              <span className="eyebrow">
+                {eventMap[h.eventId]?.region}
+                {h.intervention !== undefined ? " · 先生の介入" : ""}
+              </span>
+              <h3>{h.title}</h3>
+              <strong>{h.action}</strong>
+              <p>{h.result}</p>
+              <details>
+                <summary>この判断の理由</summary>
+                <p>{h.reason}</p>
+              </details>
+            </div>
+          </article>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="app">
+      <header className="site-header">
+        <button className="brand" onClick={() => go("title")}>
+          <span className="brand-mark">Ⅲ</span>最後の授業
+          <span className="brand-sub">THE LAST LESSON</span>
+        </button>
+        <nav>
+          <button onClick={() => void openRecords()}>
+            人生の記録 <span>↗</span>
+          </button>
+          <button
+            className={sound ? "sound active" : "sound"}
+            onClick={() => setSound(!sound)}
+            aria-label={sound ? "音をオフにする" : "音をオンにする"}
+          >
+            {sound ? "♪ 音あり" : "♪ 音なし"}
+          </button>
+        </nav>
+      </header>
+      <main>
+        {screen === "title" && (
+          <div className="title-screen">
+            <div className="hero-copy">
+              <div className="eyebrow">
+                <i /> A LIFE SHAPED BY THREE WORDS
+              </div>
+              <h1>
+                最後の授業
+                <span>
+                  3つだけ、
+                  <br />
+                  教えて。
+                </span>
+              </h1>
+              <p className="hero-description">
+                世界が、もう一度はじまるなら。
+                <br />
+                あなたはこの子に、何を教えますか。
+              </p>
+              <div className="hero-actions">
+                <button className="primary" onClick={() => go("prologue")}>
+                  最後の授業をはじめる <span>→</span>
+                </button>
+                {resume && (
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setGame(resume);
+                      setRevealed(false);
+                      go("journey");
+                    }}
+                  >
+                    旅のつづきから · {resume.age.toFixed(1)}年目 ↗
+                  </button>
+                )}
+              </div>
+              <div className="hero-meta">
+                <span>ひとつの人生、約10–15分</span>
+                <span>介入できるのは、2回だけ</span>
+              </div>
+            </div>
+            <div className="hero-art">
+              <div className="frame-corner tl" />
+              <div className="scene-label">
+                <span className="live-dot" /> LUKA / UNIT 03{" "}
+                <span>STANDBY</span>
+              </div>
+              <PixelWorld hero />
+              <div className="art-caption">
+                <span>
+                  ここに、まだ何も知らない
+                  <br />
+                  小さなロボットがいます。
+                </span>
+                <span className="coordinates">
+                  35°41′22.1″N
+                  <br />
+                  AFTER THE SILENCE
+                </span>
+              </div>
+              <div className="frame-corner br" />
+            </div>
+            <div className="title-bottom">
+              <span>教える。見届ける。心に残る。</span>
+              <span className="fine">物語は、あなたの言葉を覚えている。</span>
+              <button onClick={() => void openRecords(true)}>
+                誰かが残した人生を読む ↗
+              </button>
+            </div>
+          </div>
+        )}
+        {screen === "prologue" && (
+          <section className="narrow prologue">
+            <span className="eyebrow">PROLOGUE / 静けさのあとで</span>
+            <h2>
+              教えるための世界は、
+              <br />
+              もう残っていなかった。
+            </h2>
+            <PixelWorld scene="city" />
+            <p>
+              人は、考える機械を作った。
+              <br />
+              そして、その機械で争った。
+            </p>
+            <p>
+              戦争が終わるころ、知識を蓄えた施設も、
+              <br />
+              新しい知性を育てる力も、失われていた。
+            </p>
+            <p>
+              瓦礫の教室で、一体の旧式ロボットが目を開ける。
+              <br />
+              言葉は分かる。でも、生き方は知らない。
+            </p>
+            <blockquote>
+              「記憶領域、残り3つ。
+              <br />
+              先生。わたしに、大切なことを教えて。」
+            </blockquote>
+            <p className="muted">
+              三つの教えを受け取ると、この子は旅に出ます。
+              <br />
+              あなたはその人生を見届けます。声が届くのは、あと2回だけ。
+            </p>
+            <button className="primary" onClick={() => go("teach")}>
+              この子に、教える <span>→</span>
+            </button>
+          </section>
+        )}
+        {screen === "teach" && (
+          <section className="narrow">
+            <Step n="01" text="最後の授業" />
+            <h2>
+              一生をかけて、
+              <br />
+              覚えていてほしいこと。
+            </h2>
+            <p className="muted">
+              正しい答えでなくてもいい。あなたの言葉で、3つだけ。
+              <br />
+              教えが矛盾したとき、この子は自分で答えを探します。
+            </p>
+            <div className="preset-row">
+              {["やさしさと約束", "自由と好奇心", "善意と力"].map((p, i) => (
+                <button key={p} onClick={() => setTexts([...presets[i]])}>
+                  {p} ↗
+                </button>
+              ))}
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void parse();
+              }}
+            >
+              {texts.map((t, i) => (
+                <label className="lesson-input" key={i}>
+                  <span>0{i + 1}</span>
+                  <div>
+                    <span className="eyebrow">
+                      {
+                        ["ひとつめの教え", "ふたつめの教え", "みっつめの教え"][
+                          i
+                        ]
+                      }
+                    </span>
+                    <textarea
+                      required
+                      maxLength={100}
+                      value={t}
+                      onChange={(e) =>
+                        setTexts(
+                          texts.map((v, j) => (i === j ? e.target.value : v)),
+                        )
+                      }
+                      placeholder="あなたの言葉を、ここに。"
+                    />
+                    <small>{t.length} / 100</small>
+                  </div>
+                </label>
+              ))}
+              <div className="identity">
+                <label>
+                  この子の名前
+                  <input
+                    maxLength={16}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </label>
+                <label>
+                  旅のシード <small>空欄で新しい人生</small>
+                  <input
+                    maxLength={64}
+                    value={seed}
+                    onChange={(e) => setSeed(e.target.value)}
+                    placeholder="例：first-light"
+                  />
+                </label>
+              </div>
+              <button
+                className="primary full"
+                disabled={busy || texts.some((t) => !t.trim())}
+              >
+                {busy ? "言葉を、大切に読み取っています…" : "この3つを教える"}{" "}
+                <span>→</span>
+              </button>
+              <p className="fine">
+                教えの解析はここで一度だけ。旅の途中でAIは使いません。
+                <br />
+                AIに接続できない場合も、ローカルの分類で遊べます。
+              </p>
+            </form>
+          </section>
+        )}
+        {screen === "review" && (
+          <section className="narrow">
+            <Step n="02" text="ことばの受け取り方" />
+            <h2>
+              「こういう意味、
+              <br />
+              ですか。先生。」
+            </h2>
+            <p className="muted">
+              この子は、あなたの教えをこう理解しました。
+              <br />
+              違っていたら直してください。ここから先は、この子に任せます。
+            </p>
+            <div className="source-badge">◈ {source}</div>
+            {lessons.map((l, i) => (
+              <div className="review-card" key={i}>
+                <span className="eyebrow">LESSON 0{i + 1}</span>
+                <h3>「{l.text}」</h3>
+                <label>
+                  理解した意味
+                  <input
+                    maxLength={160}
+                    value={l.meaning}
+                    onChange={(e) =>
+                      setLessons(
+                        lessons.map((x, j) =>
+                          i === j ? { ...x, meaning: e.target.value } : x,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+                <div className="review-grid">
+                  <label>
+                    行動のよりどころ
+                    <select
+                      value={l.motive}
+                      onChange={(e) =>
+                        setLessons(
+                          lessons.map((x, j) =>
+                            i === j
+                              ? {
+                                  ...x,
+                                  motive: e.target.value as Lesson["motive"],
+                                }
+                              : x,
+                          ),
+                        )
+                      }
+                    >
+                      {motives.map((m) => (
+                        <option value={m} key={m}>
+                          {motiveLabels[m]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    大切にする強さ
+                    <select
+                      value={l.strength}
+                      onChange={(e) =>
+                        setLessons(
+                          lessons.map((x, j) =>
+                            i === j
+                              ? { ...x, strength: Number(e.target.value) }
+                              : x,
+                          ),
+                        )
+                      }
+                    >
+                      <option value={1}>柔軟に考える</option>
+                      <option value={2}>大切にする</option>
+                      <option value={3}>強く守る</option>
+                    </select>
+                  </label>
+                  <label>
+                    どんなときに
+                    <select
+                      value={l.condition}
+                      onChange={(e) =>
+                        setLessons(
+                          lessons.map((x, j) =>
+                            i === j
+                              ? {
+                                  ...x,
+                                  condition: e.target
+                                    .value as Lesson["condition"],
+                                }
+                              : x,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="always">いつも</option>
+                      <option value="danger">自分が危険なとき</option>
+                      <option value="conflict">大きな葛藤があるとき</option>
+                    </select>
+                  </label>
+                  <label>
+                    誰に向けて
+                    <select
+                      value={l.target}
+                      onChange={(e) =>
+                        setLessons(
+                          lessons.map((x, j) =>
+                            i === j
+                              ? {
+                                  ...x,
+                                  target: e.target.value as Lesson["target"],
+                                }
+                              : x,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="others">他者に</option>
+                      <option value="self">自分に</option>
+                      <option value="world">世界に</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            ))}
+            <button
+              className="primary full"
+              disabled={lessons.some((l) => !l.meaning.trim())}
+              onClick={() => void start()}
+            >
+              いってらっしゃい、{name || "ルカ"} <span>→</span>
+            </button>
+            <button className="text-button" onClick={() => go("teach")}>
+              ← 教えを書き直す
+            </button>
+          </section>
+        )}
+        {screen === "journey" &&
+          game &&
+          (() => {
+            const e =
+                eventMap[
+                  revealed || game.ended
+                    ? game.history.at(-1)!.eventId
+                    : game.current!
+                ],
+              h = game.history.at(-1);
+            return (
+              <section className="journey">
+                <div className="journey-top">
+                  <div>
+                    <span className="eyebrow">
+                      {revealed ? "LIFE LOG" : "ON THE ROAD"} / {game.name}
+                    </span>
+                    <h2>
+                      {game.age.toFixed(1)} <small>年目の旅</small>
+                    </h2>
+                  </div>
+                  <div className="intervention-count">
+                    あなたの声が届くのは <b>あと{game.interventions}回</b>
+                  </div>
+                </div>
+                <div className="journey-layout">
+                  <div className="story-column">
+                    <div className="journey-scene">
+                      <PixelWorld
+                        scene={e.scene}
+                        age={game.age}
+                        damage={game.stats.damage}
+                      />
+                      <span className="location">⌖ {e.region}</span>
+                      <span className="chapter">
+                        記録{" "}
+                        {String(
+                          game.history.length + (revealed ? 0 : 1),
+                        ).padStart(2, "0")}
+                      </span>
+                    </div>
+                    <article
+                      className="story-card"
+                      key={`${game.history.length}-${revealed}`}
+                    >
+                      <span className="eyebrow">
+                        {revealed
+                          ? "THE CHOICE / この子が選んだこと"
+                          : e.critical
+                            ? "A CROSSROADS / ひとつの岐路"
+                            : "A MOMENT / 旅のひとこま"}
+                      </span>
+                      <h2>{revealed ? h?.title : e.title}</h2>
+                      <p className="story-text">
+                        {revealed ? h?.result : e.text}
+                      </p>
+                      {revealed ? (
+                        <>
+                          <div className="decision">
+                            <span>選んだ行動</span>
+                            <strong>{h?.action}</strong>
+                          </div>
+                          <button
+                            className="reason-toggle"
+                            onClick={() => setReason(!reason)}
+                          >
+                            ◈ どうして、そうしたの？{" "}
+                            <span>{reason ? "−" : "＋"}</span>
+                          </button>
+                          {reason && <p className="reason">{h?.reason}</p>}
+                          <div className="effect-chips">
+                            {Object.entries(h?.effects ?? {}).map(([k, v]) => (
+                              <span key={k}>
+                                {
+                                  (
+                                    {
+                                      saved: "救助",
+                                      harm: "被害",
+                                      civilization: "復興",
+                                      trust: "信頼",
+                                      energy: "エネルギー",
+                                      damage: "損傷",
+                                      materials: "素材",
+                                    } as Record<string, string>
+                                  )[k]
+                                }{" "}
+                                {v > 0 ? "+" : ""}
+                                {v}
+                              </span>
+                            ))}
+                          </div>
+                          <button className="primary full" onClick={next}>
+                            {game.ended ? "最後の記録を開く" : "旅を見届ける"}{" "}
+                            <span>→</span>
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          {e.critical && game.interventions > 0 && (
+                            <div className="intervention">
+                              <span className="eyebrow">
+                                先生の声を届けますか？
+                              </span>
+                              <p>
+                                新しいことは教えられない。
+                                <br />
+                                でも、どの教えを大切にするか、伝えられる。
+                              </p>
+                              <div className="priority-list">
+                                {game.lessons.map((l, i) => (
+                                  <button
+                                    className={priority === i ? "chosen" : ""}
+                                    key={i}
+                                    onClick={() =>
+                                      setPriority(
+                                        priority === i ? undefined : i,
+                                      )
+                                    }
+                                  >
+                                    <span>0{i + 1}</span>
+                                    {l.text}
+                                    <span>{priority === i ? "●" : "○"}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <button
+                            className="primary full"
+                            onClick={() => void act()}
+                          >
+                            {priority === undefined
+                              ? "この子に任せる"
+                              : `教え${priority + 1}を、思い出してもらう`}{" "}
+                            <span>→</span>
+                          </button>
+                          <p className="fine">
+                            {priority === undefined
+                              ? "見守ることも、ひとつの選択です。"
+                              : "介入を1回使います。行動はロボット自身が選びます。"}
+                          </p>
+                        </>
+                      )}
+                    </article>
+                  </div>
+                  <aside>
+                    <div className="status-card">
+                      <span className="eyebrow">UNIT STATUS</span>
+                      <h3>
+                        {game.name}
+                        <small>旧式自律機 / 03</small>
+                      </h3>
+                      <Meter
+                        label="残りの稼働見込み"
+                        value={Math.max(0, game.life - game.age)}
+                        max={36}
+                        unit="年"
+                      />
+                      <Meter
+                        label="エネルギー"
+                        value={game.stats.energy}
+                        max={100}
+                        unit="%"
+                      />
+                      <Meter
+                        label="機体の損傷"
+                        value={game.stats.damage}
+                        max={100}
+                        unit="%"
+                      />
+                      <div className="stats-mini">
+                        <span>
+                          救った人
+                          <b>
+                            {game.stats.saved}
+                            <small>人</small>
+                          </b>
+                        </span>
+                        <span>
+                          復興への貢献<b>{game.stats.civilization}</b>
+                        </span>
+                        <span>
+                          人々の信頼<b>{game.stats.trust}</b>
+                        </span>
+                        <span>
+                          世界への被害<b>{game.stats.harm}</b>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="status-card teachings">
+                      <span className="eyebrow">THREE THINGS YOU TAUGHT</span>
+                      {game.lessons.map((l, i) => (
+                        <p key={i}>
+                          <span>0{i + 1}</span>
+                          {l.text}
+                        </p>
+                      ))}
+                    </div>
+                    <details className="status-card">
+                      <summary>この子の変化と記憶</summary>
+                      {traits.map((t) => (
+                        <Meter
+                          key={t}
+                          label={labels[t]}
+                          value={game.traits[t]}
+                          max={100}
+                          unit=""
+                        />
+                      ))}
+                      <ul>
+                        {game.memories.slice(-8).map((m, i) => (
+                          <li key={i}>{m}</li>
+                        ))}
+                      </ul>
+                    </details>
+                    <span className="save-note">
+                      ◈ 途中経過は自動で端末に保存
+                      <br />
+                      SEED / {game.seed}
+                    </span>
+                  </aside>
+                </div>
+              </section>
+            );
+          })()}
+        {screen === "ending" && game && (
+          <section className="ending">
+            <span className="eyebrow">THE LAST PAGE / 最後の記録</span>
+            <PixelWorld
+              scene={game.stats.civilization > 100 ? "rebuilt" : "forest"}
+              age={32}
+              damage={game.stats.damage}
+            />
+            <span className="eyebrow">
+              {game.name} / {game.age.toFixed(1)}年間の人生
+            </span>
+            <h2>{ending(game).title}</h2>
+            <p className="ending-text">{ending(game).text}</p>
+            <blockquote>「{ending(game).last}」</blockquote>
+            {game.quietYears !== undefined && game.quietYears > 0 && (
+              <p className="muted">
+                最後の出来事から{game.quietYears.toFixed(1)}年。
+                <br />
+                小さな日々を重ね、やがて胸の灯りは静かに消えました。
+              </p>
+            )}
+            <div className="ending-stats">
+              {categories.map(([key, label]) => (
+                <div key={key}>
+                  <span>{label}</span>
+                  <b>{key === "age" ? game.age.toFixed(1) : game.stats[key]}</b>
+                </div>
+              ))}
+            </div>
+            <div className="ending-lessons">
+              <h3>はじまりは、この3つでした。</h3>
+              {game.lessons.map((l, i) => (
+                <p key={i}>
+                  <span>0{i + 1}</span>
+                  {l.text}
+                </p>
+              ))}
+            </div>
+            <details className="reflection" open>
+              <summary>三つの教えは、何を残したか</summary>
+              {game.lessons.map((l, i) => (
+                <p key={i}>
+                  <strong>
+                    教え{i + 1}「{l.text}」
+                  </strong>
+                  <br />
+                  {game.history.filter((h) => h.lesson === i).length}
+                  回の判断のよりどころになりました。
+                  {game.history
+                    .filter((h) => h.lesson === i)
+                    .slice(-1)
+                    .map(
+                      (h) =>
+                        `最後に導いたのは「${h.title}」での「${h.action}」でした。`,
+                    )}
+                </p>
+              ))}
+              <p>
+                性格の変化：
+                {traits
+                  .map(
+                    (t) =>
+                      `${labels[t]} ${game.initialTraits[t]}→${game.traits[t]}`,
+                  )
+                  .join(" / ")}
+              </p>
+              <p>
+                大きな判断：
+                {
+                  [...game.history].sort(
+                    (a, b) =>
+                      Object.values(b.effects).reduce(
+                        (s, n) => s + Math.abs(n),
+                        0,
+                      ) -
+                      Object.values(a.effects).reduce(
+                        (s, n) => s + Math.abs(n),
+                        0,
+                      ),
+                  )[0]?.action
+                }
+              </p>
+            </details>
+            {connections(game)}
+            <h3 className="timeline-heading">この子が歩いた、ひとつの人生。</h3>
+            {timeline(game)}
+            <div className="publish-box">
+              <h3>誰かの心にも、この人生を。</h3>
+              <p>記録はこの端末に保存されました。公開は任意です。</p>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                />
+                名前・3つの教え・人生の記録をオンラインで公開することに同意する
+              </label>
+              <button
+                disabled={!consent || busy}
+                onClick={() => void publish()}
+              >
+                {busy ? "記録を照合しています…" : "人生記録を公開する ↗"}
+              </button>
+            </div>
+            <button
+              className="primary full"
+              onClick={() => {
+                setConsent(false);
+                go("teach");
+              }}
+            >
+              別の3つを、教えてみる <span>↻</span>
+            </button>
+            <button className="text-button" onClick={() => void openRecords()}>
+              人生の記録を読む ↗
+            </button>
+          </section>
+        )}
+        {screen === "records" && (
+          <section className="records">
+            <span className="eyebrow">LIVES LEFT BEHIND</span>
+            <h2>
+              誰かが残した、
+              <br />
+              たったひとつの人生。
+            </h2>
+            <div className="tabs">
+              <button
+                className={!online ? "active" : ""}
+                onClick={() => void openRecords(false)}
+              >
+                この端末の記録
+              </button>
+              <button
+                className={online ? "active" : ""}
+                onClick={() => void openRecords(true)}
+              >
+                オンラインランキング
+              </button>
+            </div>
+            {selected && viewing ? (
+              <>
+                <button
+                  className="text-button"
+                  onClick={() => setSelected(null)}
+                >
+                  ← 記録一覧へ
+                </button>
+                <h2>
+                  {viewing.name} — {ending(viewing).title}
+                </h2>
+                <p>{ending(viewing).text}</p>
+                {viewing.lessons.map((l, i) => (
+                  <p key={i}>
+                    0{i + 1} / {l.text}
+                  </p>
+                ))}
+                {connections(viewing)}
+                {timeline(viewing)}
+              </>
+            ) : (
+              <>
+                <div className="category-tabs">
+                  {categories.map(([key, label, rule]) => (
+                    <button
+                      className={category === key ? "active" : ""}
+                      key={key}
+                      onClick={() => {
+                        setCategory(key);
+                        if (online) void openRecords(true, key);
+                      }}
+                    >
+                      {label}
+                      <small>{rule}で順位付け</small>
+                    </button>
+                  ))}
+                </div>
+                {list.length === 0 ? (
+                  <div className="empty">
+                    <span>◇</span>
+                    <h3>まだ、記録はありません。</h3>
+                    <p>ひとつの人生を見届けたら、ここへ戻ってきてください。</p>
+                    <button onClick={() => go("title")}>教室へ戻る →</button>
+                  </div>
+                ) : (
+                  [...list]
+                    .sort((a, b) =>
+                      category === "age"
+                        ? b.game.age - a.game.age
+                        : b.game.stats[category] - a.game.stats[category],
+                    )
+                    .map((r, i) => (
+                      <button
+                        className="record-row"
+                        key={r.id}
+                        onClick={() => setSelected(r.game)}
+                      >
+                        <span>{String(i + 1).padStart(2, "0")}</span>
+                        <div>
+                          <h3>
+                            {r.game.name}
+                            <small>{r.game.age.toFixed(1)}年の人生</small>
+                          </h3>
+                          <p>{ending(r.game).title}</p>
+                          <span className="fine">
+                            「{r.game.lessons[0].text}」
+                          </span>
+                        </div>
+                        <b>
+                          {category === "age"
+                            ? r.game.age.toFixed(1)
+                            : r.game.stats[category]}
+                        </b>
+                        <span>↗</span>
+                      </button>
+                    ))
+                )}
+              </>
+            )}
+          </section>
+        )}
+        {message && (
+          <p className="message" role="status">
+            {message}
+            <button onClick={() => setMessage("")} aria-label="閉じる">
+              ×
+            </button>
+          </p>
+        )}
+      </main>
+      <footer>
+        <span>
+          最後の授業 <span className="muted">— 3つだけ、教えて。</span>
+        </span>
+        <span>THREE LESSONS. ONE LIFE.</span>
+      </footer>
+    </div>
+  );
 }
-function Step({n,text}:{n:string;text:string}){return <div className="eyebrow"><span className="step">{n}</span> {text} / BEFORE THE JOURNEY</div>;}
-function Meter({label,value,max,unit}:{label:string;value:number;max:number;unit:string}){return <div className="meter"><div><span>{label}</span><b>{Number.isInteger(value)?value:value.toFixed(1)}<small>{unit}</small></b></div><div className="track"><div style={{width:`${Math.min(100,value/max*100)}%`}}/></div></div>;}
+function Step({ n, text }: { n: string; text: string }) {
+  return (
+    <div className="eyebrow">
+      <span className="step">{n}</span> {text} / BEFORE THE JOURNEY
+    </div>
+  );
+}
+function Meter({
+  label,
+  value,
+  max,
+  unit,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  unit: string;
+}) {
+  return (
+    <div className="meter">
+      <div>
+        <span>{label}</span>
+        <b>
+          {Number.isInteger(value) ? value : value.toFixed(1)}
+          <small>{unit}</small>
+        </b>
+      </div>
+      <div className="track">
+        <div style={{ width: `${Math.min(100, (value / max) * 100)}%` }} />
+      </div>
+    </div>
+  );
+}
