@@ -71,3 +71,45 @@ describe("API boundary", () => {
     ).toBe(503);
   });
 });
+
+it("recalculates a forged client score, requires consent and enforces the posting limit", async () => {
+  let count = 0;
+  let stored: unknown;
+  const database = {
+    prepare: (sql: string) => ({
+      bind: (...values: unknown[]) => ({
+        first: async () => ({ count: ++count }),
+        run: async () => {
+          if (sql.startsWith("INSERT OR IGNORE INTO lives"))
+            stored = JSON.parse(values[2] as string);
+          return { success: true };
+        },
+      }),
+    }),
+  };
+  const withDB = { ...env, DB: database } as unknown as Cloudflare.Env;
+  const data = {
+    consent: true,
+    name: "ルカ",
+    seed: "forgery",
+    lessons: classify(["助ける", "約束を守る", "学ぶ"]),
+    interventions: [],
+    stats: { saved: 999999 },
+    score: 999999,
+  };
+  expect(
+    (await worker.fetch(post("records", { ...data, consent: false }), withDB))
+      .status,
+  ).toBe(400);
+  expect((await worker.fetch(post("records", data), withDB)).status).toBe(201);
+  const life = stored as {
+    stats: { saved: number };
+    ended: boolean;
+    history: unknown[];
+  };
+  expect(life.stats.saved).toBeLessThan(999999);
+  expect(life.ended).toBe(true);
+  expect(life.history.length).toBeGreaterThanOrEqual(20);
+  count = 5;
+  expect((await worker.fetch(post("records", data), withDB)).status).toBe(429);
+});

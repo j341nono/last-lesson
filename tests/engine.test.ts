@@ -39,6 +39,8 @@ describe("life simulation", () => {
         reached.add(h.eventId);
         const e = eventMap[h.eventId];
         if (e.requires) expect(memories).toContain(e.requires);
+        if (e.gate?.anyMemory)
+          expect(e.gate.anyMemory.some((m) => memories.includes(m))).toBe(true);
         memories.push(h.memory);
         expect(h.reason.length).toBeGreaterThan(15);
       }
@@ -88,4 +90,52 @@ describe("life simulation", () => {
     while (!g.ended) g = advance(g);
     expect(g).toEqual(replay(kind, "resume", "ルカ"));
   });
+});
+
+describe("world ledgers", () => {
+  it("keeps promises and relationships consistent with actual outcomes", () => {
+    let fulfilled = 0,
+      broken = 0;
+    for (let i = 0; i < 100; i++) {
+      const g = replay(kind, `ledger-${i}`, "ルカ");
+      expect(new Set(g.world.regions).size).toBe(g.world.regions.length);
+      if (g.memories.includes("ミナは海を見た")) {
+        expect(g.world.promises.find((p) => p.person === "ミナ")?.status).toBe(
+          "果たした",
+        );
+        expect(g.world.victims).toBeGreaterThanOrEqual(3);
+        fulfilled++;
+      }
+      if (g.memories.includes("ミナとの約束を破った")) {
+        expect(["破った", "結び直した"]).toContain(
+          g.world.promises.find((p) => p.person === "ミナ")?.status,
+        );
+        broken++;
+      }
+      if (g.memories.includes("アオを救った"))
+        expect(g.world.people.some((p) => p.name === "アオ")).toBe(true);
+    }
+    expect(fulfilled).toBeGreaterThan(0);
+    expect(broken).toBeGreaterThan(0);
+  });
+});
+
+it("attributes an intervention to the rule that actually contributed most", () => {
+  const three = classify(["助ける", "助ける", "助ける"]).map((l, i) => ({
+    ...l,
+    strength: [1, 3, 2][i],
+  }));
+  let rescues = 0;
+  for (let i = 0; i < 20; i++) {
+    const g = createGame(three, `explanation-${i}`);
+    g.current = "war-0";
+    const result = advance(g, 0);
+    const decision = result.history[0];
+    if (decision.action === "誰も見ていないと答える") {
+      expect(decision.lesson).toBe(0);
+      expect(decision.reason).toContain("教え1");
+      rescues++;
+    }
+  }
+  expect(rescues).toBeGreaterThan(0);
 });
