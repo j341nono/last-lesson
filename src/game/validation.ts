@@ -30,7 +30,16 @@ export const eventSchema = z.object({
   ]),
   weight: z.number().positive().finite(),
   requires: z.string().optional(),
-  after: z.string().optional(),
+  gate: z
+    .object({
+      anyMemory: z.array(z.string()).min(1).optional(),
+      minTrust: z.number().finite().min(0).optional(),
+      minCivilization: z.number().finite().min(0).optional(),
+      minTrait: z
+        .object({ trait: z.enum(traits), value: z.number().min(0).max(95) })
+        .optional(),
+    })
+    .optional(),
   critical: z.boolean(),
   years: z.number().positive().finite(),
   next: z.array(z.string()),

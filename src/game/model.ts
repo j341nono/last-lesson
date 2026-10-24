@@ -81,7 +81,12 @@ export type Event = {
   scene: string;
   weight: number;
   requires?: string;
-  after?: string;
+  gate?: {
+    anyMemory?: string[];
+    minTrust?: number;
+    minCivilization?: number;
+    minTrait?: { trait: Trait; value: number };
+  };
   critical: boolean;
   years: number;
   actions: Action[];

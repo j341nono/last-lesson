@@ -83,6 +83,16 @@ export function createGame(
   g.current = selectEvent(g);
   return g;
 }
+export function meetsGate(g: Game, e: (typeof events)[number]) {
+  const gate = e.gate;
+  return (
+    (!gate?.anyMemory || gate.anyMemory.some((m) => g.memories.includes(m))) &&
+    (gate?.minTrust === undefined || g.stats.trust >= gate.minTrust) &&
+    (gate?.minCivilization === undefined ||
+      g.stats.civilization >= gate.minCivilization) &&
+    (!gate?.minTrait || g.traits[gate.minTrait.trait] >= gate.minTrait.value)
+  );
+}
 function selectEvent(g: Game) {
   const seen = new Set(g.history.map((h) => h.eventId));
   const chapter = Math.min(3, Math.floor(g.history.length / 6));
@@ -90,7 +100,8 @@ function selectEvent(g: Game) {
     (e) =>
       !seen.has(e.id) &&
       e.stage <= chapter &&
-      (!e.requires || g.memories.includes(e.requires)),
+      (!e.requires || g.memories.includes(e.requires)) &&
+      meetsGate(g, e),
   );
   if (!candidates.length) return null;
   return weighted(
@@ -162,15 +173,29 @@ export function advance(input: Game, priority?: number): Game {
   );
   const action = weighted(g, options, (a) => actionWeight(g, a, priority));
   let best = 0;
+  const contribution = (index: number) =>
+    lessonScore(g, action, index) * (priority === index ? 4 : 1);
   g.lessons.forEach((_, i) => {
-    if (lessonScore(g, action, i) > lessonScore(g, action, best)) best = i;
+    if (contribution(i) > contribution(best)) best = i;
   });
   const matched = lessonScore(g, action, best) > 0;
   let reason = matched
     ? `教え${best + 1}「${g.lessons[best].text}」を「${g.lessons[best].meaning}」と解釈した。`
     : `教えだけでは答えが決まらず、${g.traits[links[action.motive]] >= 60 ? "強くなった" : "これまでの"}「${{ rescue: "共感", truth: "誠実さ", promise: "責任感", explore: "好奇心", survive: "自己保存", community: "つながり", freedom: "自律性", power: "力への信頼" }[action.motive]}」を頼りにした。`;
+  if (action.motive === "promise" && g.memories.some((m) => m.includes("約束")))
+    reason += "過去に交わした約束の経験も、この選択の重みを強めた。";
+  if (
+    action.motive === "community" &&
+    g.memories.some((m) => m.includes("工房") || m.includes("ミナ"))
+  )
+    reason +=
+      "工房やミナとの出会いから、誰かと生きることを意識するようになった。";
   if (e.requires)
     reason += `「${e.requires}」という記憶が、この出来事につながった。`;
+  const connection = e.gate?.anyMemory?.find((m) => g.memories.includes(m));
+  if (connection) reason += `別の旅で得た「${connection}」が、この道を開いた。`;
+  if (e.gate?.minTrust)
+    reason += `人々の信頼が${e.gate.minTrust}以上になったことで、この役目が届いた。`;
   if (priority !== undefined)
     reason += `先生は教え${priority + 1}を優先した。行動を指定するのではなく、判断の重みを変えた。`;
   g.life = Math.min(
@@ -298,14 +323,43 @@ export function validateScenarios() {
       e.actions.length < 2
     )
       errors.push(`invalid ${e.id}`);
+    for (const m of e.gate?.anyMemory ?? [])
+      if (!memories.has(m)) errors.push(`missing memory ${e.id}: ${m}`);
     if (e.requires && !memories.has(e.requires))
       errors.push(`unreachable ${e.id}`);
+    for (const action of e.actions)
+      if (action.requires && !memories.has(action.requires))
+        errors.push(`unknown action memory ${e.id}`);
+    if (e.actions.every((a) => a.requires))
+      errors.push(`no unconditional action ${e.id}`);
+    const maxTrust = events
+      .flatMap((v) => v.actions)
+      .reduce((n, a) => n + Math.max(0, a.effects.trust ?? 0), 0);
+    const maxCivilization = events
+      .flatMap((v) => v.actions)
+      .reduce((n, a) => n + Math.max(0, a.effects.civilization ?? 0), 0);
+    if (
+      (e.gate?.minTrust ?? 0) > maxTrust ||
+      (e.gate?.minCivilization ?? 0) > maxCivilization
+    )
+      errors.push(`impossible threshold ${e.id}`);
+    const producer = (m: string) =>
+      events.find((v) => v.actions.some((a) => a.memory === m))?.id;
+    if (
+      e.requires &&
+      e.gate?.anyMemory?.every(
+        (m) => m !== e.requires && producer(m) === producer(e.requires!),
+      )
+    )
+      errors.push(`mutually exclusive memories ${e.id}`);
     for (const n of e.next) if (!eventMap[n]) errors.push(`missing ${n}`);
     for (const a of e.actions)
       if (!a.traits || !Number.isFinite(a.life ?? 0))
         errors.push(`action ${e.id}`);
   }
-  const reachable = new Set(events.filter((e) => !e.requires).map((e) => e.id));
+  const reachable = new Set(
+    events.filter((e) => !e.requires && !e.gate?.anyMemory).map((e) => e.id),
+  );
   for (let pass = 0; pass < events.length; pass++) {
     const available = new Set(
       events
@@ -313,7 +367,11 @@ export function validateScenarios() {
         .flatMap((e) => e.actions.map((a) => a.memory)),
     );
     for (const e of events)
-      if (!e.requires || available.has(e.requires)) reachable.add(e.id);
+      if (
+        (!e.requires || available.has(e.requires)) &&
+        (!e.gate?.anyMemory || e.gate.anyMemory.some((m) => available.has(m)))
+      )
+        reachable.add(e.id);
   }
   for (const e of events)
     if (!reachable.has(e.id)) errors.push(`unreachable cycle ${e.id}`);
