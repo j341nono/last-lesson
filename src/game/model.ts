@@ -12,5 +12,5 @@ export type Stats={saved:number;harm:number;civilization:number;trust:number;mat
 export type Action={label:string;result:string;motive:Motive;traits:Partial<Record<Trait,number>>;effects:Partial<Stats>;memory:string;requires?:string;life?:number};
 export type Event={id:string;arc:string;stage:number;title:string;text:string;region:string;scene:string;weight:number;requires?:string;after?:string;critical:boolean;years:number;actions:Action[];next:string[]};
 export type Entry={eventId:string;title:string;year:number;action:string;result:string;reason:string;lesson:number;memory:string;effects:Partial<Stats>;intervention?:number};
-export type Game={version:1;seed:string;rng:number;name:string;lessons:Lesson[];traits:Record<Trait,number>;stats:Stats;age:number;life:number;memories:string[];history:Entry[];current:string|null;interventions:number;ended:boolean;initialTraits:Record<Trait,number>};
+export type Game={version:1;quietYears?:number;seed:string;rng:number;name:string;lessons:Lesson[];traits:Record<Trait,number>;stats:Stats;age:number;life:number;memories:string[];history:Entry[];current:string|null;interventions:number;ended:boolean;initialTraits:Record<Trait,number>};
 export type RecordLife={id:string;date:string;game:Game};
